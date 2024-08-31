@@ -1,7 +1,6 @@
-
-
 # base.py
 import os
+from datetime import timedelta
 
 from configurations import Configuration
 from pathlib import Path
@@ -12,6 +11,8 @@ class Base(Configuration):
     SECRET_KEY = "django-insecure-5c-x!4zyp=i!@&&_x-17rm4^z69_z9=s@m_@*h&i(w+r_+a%(4"
     DEBUG = False  # Default to False for security
     ALLOWED_HOSTS = []
+
+    AUTH_USER_MODEL = 'users.User'
 
     DJANGO_APPS = [
         'jazzmin',
@@ -26,9 +27,15 @@ class Base(Configuration):
 
     LOCAL_APPS = [
         'apps.users.apps.UsersConfig',
+        'apps.tracking.apps.TrackingConfig',
     ]
     THIRD_PARTY_APPS = [
+        # 'django_configurations',
         'corsheaders',
+        'drf_spectacular',
+        'rest_framework_simplejwt',
+        'channels',
+        "django_celery_beat",
     ]
 
     INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS + THIRD_PARTY_APPS
@@ -63,6 +70,7 @@ class Base(Configuration):
     ]
 
     WSGI_APPLICATION = 'config.wsgi.application'
+    ASGI_APPLICATION = 'config.asgi.application'
 
     DATABASES = {
         'default': {
@@ -87,14 +95,16 @@ class Base(Configuration):
     ]
 
     CACHES = {
-        "default": {
-            "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": os.getenv("REDIS_URL"),
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            },
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': 'redis://localhost:6379/1',  # Ensure this is correct
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
         }
     }
+
+
 
     LANGUAGE_CODE = 'en-us'
     TIME_ZONE = 'UTC'
@@ -102,6 +112,11 @@ class Base(Configuration):
     USE_TZ = True
 
     STATIC_URL = '/static/'
+
+    STATICFILES_FINDERS = (
+        "django.contrib.staticfiles.finders.FileSystemFinder",
+        "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+    )
 
     if DEBUG:
         STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")]
@@ -112,8 +127,6 @@ class Base(Configuration):
     MEDIA_URL = '/media/'
 
     DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
 
     LANGUAGES = (
         ("az", "az"),
@@ -198,4 +211,126 @@ class Base(Configuration):
                 'elementspath'
             ]),
         }
+    }
+
+    SPECTACULAR_SETTINGS = {
+        'TITLE': 'Tracking API',
+        'DESCRIPTION': 'DRF',
+        'VERSION': '1.0.0',
+        'SERVE_INCLUDE_SCHEMA': False,
+        # OTHER SETTINGS
+    }
+
+    REST_FRAMEWORK = {
+        'DEFAULT_AUTHENTICATION_CLASSES': (
+            'rest_framework_simplejwt.authentication.JWTAuthentication',
+        ),
+        'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    }
+
+    # JWT
+    SIMPLE_JWT = {
+        "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
+        "REFRESH_TOKEN_LIFETIME": timedelta(days=90),
+        "ROTATE_REFRESH_TOKENS": True,
+        "BLACKLIST_AFTER_ROTATION": True,
+        "UPDATE_LAST_LOGIN": True,
+        "SIGNING_KEY": SECRET_KEY,
+        "ALGORITHM": "HS256",
+        "VERIFYING_KEY": "",
+        "AUDIENCE": None,
+        "ISSUER": None,
+        "JSON_ENCODER": None,
+        "JWK_URL": None,
+        "LEEWAY": 0,
+        "AUTH_HEADER_TYPES": ("Bearer",),
+        "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
+        "USER_ID_FIELD": "id",
+        "USER_ID_CLAIM": "user_id",
+        "USER_AUTHENTICATION_RULE": "rest_framework_simplejwt.authentication.default_user_authentication_rule",
+        # noqa E501
+        "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+        "TOKEN_TYPE_CLAIM": "token_type",
+        "TOKEN_USER_CLASS": "rest_framework_simplejwt.models.TokenUser",
+        "JTI_CLAIM": "jti",
+        "SLIDING_TOKEN_REFRESH_EXP_CLAIM": "refresh_exp",
+        "SLIDING_TOKEN_LIFETIME": timedelta(minutes=20),
+        "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
+        "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",  # noqa: E501
+        "TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSerializer",  # noqa: E501
+        "TOKEN_VERIFY_SERIALIZER": "rest_framework_simplejwt.serializers.TokenVerifySerializer",  # noqa: E501
+        "TOKEN_BLACKLIST_SERIALIZER": "rest_framework_simplejwt.serializers.TokenBlacklistSerializer",  # noqa: E501
+        "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
+        # noqa: E501
+        "SLIDING_TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSlidingSerializer",
+        # noqa: E501
+    }
+
+    CELERY_BROKER_URL = 'redis://localhost:6379/0'
+    CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+    CELERY_ACCEPT_CONTENT = ['json']
+    CELERY_TASK_SERIALIZER = 'json'
+    CELERY_TIMEZONE = 'Asia/Baku'
+    CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "django.server": {
+                "()": "django.utils.log.ServerFormatter",
+                "format": "[%(server_time)s] %(message)s",
+            },
+            "verbose": {
+                "format": "%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s"  # noqa E501
+            },
+            "simple": {"format": "%(levelname)s %(message)s"},
+        },
+        "filters": {
+            "require_debug_true": {
+                "()": "django.utils.log.RequireDebugTrue",
+            },
+        },
+        "handlers": {
+            "django.server": {
+                "level": "INFO",
+                "class": "logging.StreamHandler",
+                "formatter": "django.server",
+            },
+            "console": {
+                "level": "DEBUG",
+                "class": "logging.StreamHandler",
+                "formatter": "simple",
+            },
+            "mail_admins": {
+                "level": "ERROR",
+                "class": "django.utils.log.AdminEmailHandler",
+            },
+        },
+        "loggers": {
+            "django": {
+                "handlers": ["console"],
+                "propagate": True,
+            },
+            "django.server": {
+                "handlers": ["django.server"],
+                "level": "INFO",
+                "propagate": False,
+            },
+            "django.request": {
+                "handlers": ["mail_admins", "console"],
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "django.db.backends": {"handlers": ["console"], "level": "INFO"},
+        },
+    }
+
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [('127.0.0.1', 6379)],
+            },
+        },
     }
