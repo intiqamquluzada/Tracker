@@ -1,15 +1,18 @@
 import logging
-from datetime import datetime
+from django.db import transaction
+from datetime import datetime, timedelta
 from celery import shared_task
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import requests
 from bs4 import BeautifulSoup
 from apps.tracking.models import Stock, PriceHistory, Alert, Subscription
-from django.db import transaction
+from apps.predict.model import load_model, predict_stock_price
+from config.predicter import predicter
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
 
 @shared_task
 def fetch_and_broadcast_stock_prices():
@@ -17,6 +20,9 @@ def fetch_and_broadcast_stock_prices():
     if not channel_layer:
         logger.error("Channel layer is None. Ensure it is properly initialized.")
         return
+
+    # Load the model
+    # model = load_model()
 
     stocks = Stock.objects.all()
 
@@ -53,11 +59,21 @@ def fetch_and_broadcast_stock_prices():
                 # Check and trigger alerts
                 check_and_trigger_alerts(stock, price)
 
-                logger.info(f"Successfully broadcasted and saved price for {stock.symbol}: {price}")
+                #After 1 day predict
+                end_date = date_today + timedelta(days=1)
+                # Prediction
+                next_price = predicter(symbol=stock.symbol,
+                                       start_date=str(date_today),
+                                       end_date=str(end_date))
+                if next_price:
+                    stock.expected_price = next_price
+
+                logger.info(f"Successfully broadcasted and saved price for {stock.symbol}: {next_price}")
             else:
                 logger.warning(f"No price returned for {stock.symbol}")
         except Exception as e:
             logger.error(f"Failed to fetch or broadcast price for {stock.symbol}: {e}")
+
 
 def get_stock_price(symbol):
     # URL for scraping stock price from Yahoo Finance
@@ -70,6 +86,7 @@ def get_stock_price(symbol):
         # Example of extracting price from Yahoo Finance
         price_element = soup.find('fin-streamer', {'data-field': 'regularMarketPrice'})
         if price_element:
+            logger.info(f"PRICEEE---{float(price_element.get_text().replace(',', ''))}")
             return float(price_element.get_text().replace(',', ''))  # Convert to float
         else:
             logger.warning(f"Price element not found for {symbol}")
@@ -77,6 +94,7 @@ def get_stock_price(symbol):
     except requests.RequestException as e:
         logger.error(f"Error fetching price for {symbol}: {e}")
         return None  # Return None or a default value if the API request fails
+
 
 def check_and_trigger_alerts(stock, price):
     # Check and trigger alerts for the given stock
@@ -86,6 +104,7 @@ def check_and_trigger_alerts(stock, price):
             alert.triggered = True
             alert.save()
             notify_user(alert.user, stock.symbol, price)
+
 
 def notify_user(user, symbol, price):
     # Implement the logic to notify the user (e.g., send an email, push notification, etc.)

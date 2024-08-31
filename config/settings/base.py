@@ -28,6 +28,7 @@ class Base(Configuration):
     LOCAL_APPS = [
         'apps.users.apps.UsersConfig',
         'apps.tracking.apps.TrackingConfig',
+        'apps.predict.apps.PredictConfig',
     ]
     THIRD_PARTY_APPS = [
         # 'django_configurations',
