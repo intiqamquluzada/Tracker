@@ -17,7 +17,6 @@ class Stock(DateMixin):
 class Subscription(DateMixin):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     stock = models.ForeignKey(Stock, on_delete=models.CASCADE)
-    frequency = models.CharField(max_length=3, choices=FREQUENCY_CHOICES)
 
     def __str__(self):
         return f"{self.user.full_name} - {self.stock.symbol}"

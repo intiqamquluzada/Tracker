@@ -6,10 +6,11 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import requests
 from bs4 import BeautifulSoup
+from django.core.mail import send_mail
+from django.urls import reverse
 from apps.tracking.models import Stock, PriceHistory, Alert, Subscription
-from apps.predict.model import load_model, predict_stock_price
 from config.predicter import predicter
-
+from django.conf import settings
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,6 @@ def fetch_and_broadcast_stock_prices():
         logger.error("Channel layer is None. Ensure it is properly initialized.")
         return
 
-    # Load the model
-    # model = load_model()
-
     stocks = Stock.objects.all()
 
     for stock in stocks:
@@ -32,21 +30,16 @@ def fetch_and_broadcast_stock_prices():
             if price is not None:
                 date_today = datetime.now().date()
 
-                # Store price history in a transaction
                 with transaction.atomic():
-                    # Check if price history record already exists
                     price_history, created = PriceHistory.objects.get_or_create(
                         stock=stock,
                         date=date_today,
                         defaults={'price': price}
                     )
-
                     if not created:
-                        # If record already exists, update the price
                         price_history.price = price
                         price_history.save()
 
-                # Broadcast the price update
                 async_to_sync(channel_layer.group_send)(
                     'stock_price_group',
                     {
@@ -56,19 +49,17 @@ def fetch_and_broadcast_stock_prices():
                     }
                 )
 
-                # Check and trigger alerts
                 check_and_trigger_alerts(stock, price)
 
-                #After 1 day predict
-                end_date = date_today + timedelta(days=1)
-                # Prediction
-                next_price = predicter(symbol=stock.symbol,
-                                       start_date=str(date_today),
-                                       end_date=str(end_date))
-                if next_price:
-                    stock.expected_price = next_price
+                end_date = date_today + timedelta(days=365)
+                logger.info(f"BURA BAX--> {stock.symbol}, {str(date_today)}, {str(end_date)}")
+                next_price = predicter(symbol=stock.symbol, start_date=str(date_today), end_date=str(end_date))
 
-                logger.info(f"Successfully broadcasted and saved price for {stock.symbol}: {next_price}")
+                if next_price is not None:
+                    stock.expected_price = next_price
+                    stock.save()
+
+                logger.info(f"Successfully broadcasted and saved price for {stock.symbol}: {price}")
             else:
                 logger.warning(f"No price returned for {stock.symbol}")
         except Exception as e:
@@ -107,6 +98,16 @@ def check_and_trigger_alerts(stock, price):
 
 
 def notify_user(user, symbol, price):
-    # Implement the logic to notify the user (e.g., send an email, push notification, etc.)
+    # Implementing of the logic to notify the user
     logger.info(f"Notification sent to {user.full_name} for stock {symbol} at price {price}")
-    # Add actual notification logic here (e.g., send an email)
+    # Send an email
+    send_mail(f"Dear, {user.full_name}"
+,
+              f"""You can visit page, and see changing price of item:
+{symbol}={price}""",
+              settings.EMAIL_HOST_USER,
+              [user.email],
+              fail_silently=False,
+
+              )
+
